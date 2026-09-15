@@ -458,33 +458,42 @@ window.__MASTER__ = [[81017,"J.K. Ranasinghe","R & D"],[60033,"G.C. G.C.Fernando
     authDomain: "ansell-employee-day.firebaseapp.com",
     databaseURL: "https://ansell-employee-day-default-rtdb.firebaseio.com",
     projectId: "ansell-employee-day",
+    storageBucket: "ansell-employee-day.firebasestorage.app",
+    messagingSenderId: "806738383832",
+    appId: "1:806738383832:web:cbba30e209685b110998ad",
+    measurementId: "G-BVQSSEPQ8L"
   };
   firebase.initializeApp(firebaseConfig);
   var db = firebase.database();
+  // Each scan is now its own child node (via push()) instead of one giant
+  // array that every station overwrites with .set(). This is what makes
+  // concurrent scans from different laptops safe: push() can never clobber
+  // another station's write, whereas .set()-ing a whole array can and did.
   var logRef = db.ref("ansellEmployeeDay2026/scanLog");
+  // One node per employee ID, used purely as an atomic "claim" lock so that
+  // two simultaneous scans of the SAME id can never both win REGISTERED.
+  var registrationsRef = db.ref("ansellEmployeeDay2026/registrations");
 
   // ---------- Storage helpers ----------
   // Uses Firebase Realtime Database so EVERY device/person who opens this
   // page (hosted on GitHub Pages or anywhere) reads and writes the same
-  // live log. The 4-second poll below then pushes those updates out to
-  // every viewer, giving real cross-device live updates.
-  async function loadLog(){
-    try{
-      var snap = await logRef.once("value");
-      log = snap.val() || [];
-    }catch(e){
-      console.error("load failed", e);
-      log = [];
-    }
-    registeredIds = new Set(log.filter(function(e){return e.status === "REGISTERED";}).map(function(e){return String(e.empNo);}));
+  // live log. The realtime listener in startApp() pushes updates out to
+  // every viewer instantly, giving real cross-device live updates.
+  function logObjectToArray(val){
+    var arr = Object.keys(val || {}).map(function(k){ return val[k]; });
+    arr.sort(function(a,b){ return new Date(a.time) - new Date(b.time); });
+    return arr;
   }
 
-  async function saveLog(){
+  async function resetAllData(){
+    // Used only by the Reset button — clears both the scan log and the
+    // registration-claim locks so the event can start clean.
     try{
-      await logRef.set(log);
+      await logRef.set(null);
+      await registrationsRef.set(null);
     }catch(e){
-      console.error("storage save failed", e);
-      alert("Could not save the scan (Firebase unreachable). Check your internet connection and Firebase config, then try again.");
+      console.error("reset failed", e);
+      alert("Could not reset (Firebase unreachable). Check your internet connection and Firebase config, then try again.");
     }
   }
 
@@ -582,6 +591,15 @@ window.__MASTER__ = [[81017,"J.K. Ranasinghe","R & D"],[60033,"G.C. G.C.Fernando
   }
 
   // ---------- Scan handling ----------
+  // This is race-condition-safe across any number of simultaneous stations.
+  // The key idea: whether an ID is REGISTERED or DUPLICATE is no longer
+  // decided from a local snapshot of the log (which can be milliseconds
+  // stale) — it's decided by a Firebase *transaction* on that employee's
+  // own lock node. Firebase runs transactions against the live server
+  // value and automatically retries on conflict, so if two stations scan
+  // the same ID in the same instant, the server guarantees exactly one
+  // of them gets committed:true (REGISTERED) and the other gets
+  // committed:false (DUPLICATE) — never both, never neither.
   var processing = false;
   async function handleScan(raw){
     var empNo = String(raw).trim();
@@ -589,36 +607,43 @@ window.__MASTER__ = [[81017,"J.K. Ranasinghe","R & D"],[60033,"G.C. G.C.Fernando
     processing = true;
     scanInput.value = "";
 
-    // refresh log right before writing to minimize race conditions between stations
-    await loadLog();
-
     var emp = byId.get(empNo);
-    var status;
-    if(!emp){
-      status = "INACTIVE / NOT FOUND";
-    } else if(registeredIds.has(empNo)){
-      status = "DUPLICATE";
-    } else {
-      status = "REGISTERED";
-    }
+    var status, entry;
 
-    var entry = {
-      empNo: emp ? emp.empNo : empNo,
-      name: emp ? emp.name : "",
-      dept: emp ? emp.dept : "",
-      time: new Date().toISOString(),
-      status: status
-    };
-    log.push(entry);
-    if(status === "REGISTERED") registeredIds.add(empNo);
-    await saveLog();
+    try{
+      if(!emp){
+        status = "INACTIVE / NOT FOUND";
+        entry = { empNo: empNo, name: "", dept: "", time: new Date().toISOString(), status: status };
+      } else {
+        var nowIso = new Date().toISOString();
+        var txResult = await registrationsRef.child(empNo).transaction(function(current){
+          if(current === null){
+            // Nobody holds this ID's lock yet — claim it now. If another
+            // station's transaction commits first, Firebase re-runs this
+            // function with the new current value, so we then see it's
+            // non-null and abort below instead of double-claiming it.
+            return { name: emp.name, dept: emp.dept, time: nowIso };
+          }
+          return; // undefined return = abort, leave existing claim untouched
+        });
+
+        status = (txResult && txResult.committed) ? "REGISTERED" : "DUPLICATE";
+        entry = { empNo: emp.empNo, name: emp.name, dept: emp.dept, time: nowIso, status: status };
+      }
+
+      // push() creates a brand-new child key — this can never collide with
+      // or overwrite another station's simultaneous write.
+      await logRef.push(entry);
+    }catch(e){
+      console.error("scan handling failed", e);
+      alert("Could not save the scan (Firebase unreachable). Check your internet connection and Firebase config, then try again.");
+      processing = false;
+      scanInput.focus();
+      return;
+    }
 
     showBanner(status, emp, entry.empNo);
     soundFor(status);
-    renderMiniStats();
-    renderRecent();
-    renderDashboard();
-
     processing = false;
     scanInput.focus();
   }
@@ -660,12 +685,8 @@ window.__MASTER__ = [[81017,"J.K. Ranasinghe","R & D"],[60033,"G.C. G.C.Fernando
   document.getElementById("btnReset").addEventListener("click", async function(){
     if(!confirm("This will permanently clear the entire scan log for ALL scan stations and the dashboard. Continue?")) return;
     if(!confirm("Are you absolutely sure? This cannot be undone.")) return;
-    log = [];
-    registeredIds = new Set();
-    await saveLog();
-    renderMiniStats();
-    renderRecent();
-    renderDashboard();
+    await resetAllData();
+    // log/registeredIds/UI will update automatically via the logRef.on("value") listener
     statusBanner.className = "status-banner idle";
     statusBanner.textContent = "Log cleared. Scan a card to see the registration result here.";
   });
@@ -922,15 +943,48 @@ window.__MASTER__ = [[81017,"J.K. Ranasinghe","R & D"],[60033,"G.C. G.C.Fernando
     document.getElementById("clockTime").textContent = now.toLocaleTimeString();
   }
 
+  // One-time migration: any employee already logged as REGISTERED under the
+  // OLD system (before this fix was deployed) won't yet have a claim in the
+  // new `registrations` lock node. Without this, re-scanning them for the
+  // first time under the new code would incorrectly show REGISTERED again.
+  // Safe to run every time the app starts — it only ever fills in a lock
+  // that's currently empty (current === null), so it never overwrites a
+  // lock that's already been claimed.
+  async function migrateExistingRegistrations(initialLog){
+    var seen = new Set();
+    for(var i = 0; i < initialLog.length; i++){
+      var e = initialLog[i];
+      if(e.status === "REGISTERED" && e.empNo && !seen.has(String(e.empNo))){
+        seen.add(String(e.empNo));
+        try{
+          await registrationsRef.child(String(e.empNo)).transaction(function(current){
+            if(current === null) return { name: e.name, dept: e.dept, time: e.time };
+            return; // already locked (e.g. by a newer scan) — leave it alone
+          });
+        }catch(err){
+          console.error("migration: failed to backfill lock for", e.empNo, err);
+        }
+      }
+    }
+  }
+
   // ---------- App startup (runs once the correct PIN is entered) ----------
   function startApp(){
     tickClock();
     setInterval(tickClock, 1000);
 
+    // Run the one-time backfill against whatever is in the log right now,
+    // then attach the live listener for ongoing updates.
+    logRef.once("value", function(snap){
+      migrateExistingRegistrations(logObjectToArray(snap.val()));
+    });
+
     // Real-time listener: fires the instant ANY device writes to the log,
     // so every open screen updates immediately (no polling delay).
+    // Rebuilds the local array from the child nodes (each scan is its own
+    // node now) rather than replacing a single array wholesale.
     logRef.on("value", function(snap){
-      log = snap.val() || [];
+      log = logObjectToArray(snap.val());
       registeredIds = new Set(log.filter(function(e){return e.status === "REGISTERED";}).map(function(e){return String(e.empNo);}));
       renderMiniStats();
       renderRecent();
