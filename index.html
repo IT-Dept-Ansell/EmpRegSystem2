@@ -145,7 +145,9 @@
     border-radius:7px;background:var(--paper);
   }
   .recent li .sw{width:8px;height:8px;border-radius:50%;flex:none;}
-  .recent li .nm{font-weight:700;color:var(--ink);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .recent li .info{display:flex;flex-direction:column;flex:1;overflow:hidden;min-width:0;gap:1px;}
+  .recent li .nm{font-weight:700;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .recent li .dp{font-size:11px;font-weight:600;color:#9AA3B7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .recent li .tm{color:#9AA3B7;font-size:11.5px;flex:none;}
   .recent li.r-reg .sw{background:var(--green);}
   .recent li.r-dup .sw{background:var(--orange);}
@@ -605,9 +607,12 @@ window.__MASTER__ = [[10041,"M.D.D Kumar","Plant F",1],[10248,"M.J Niluka","BP S
       var label = e.name ? e.name : ("ID " + e.empNo + " (unknown)");
       var gLabel = genderLabel(e.gender);
       var gTag = gLabel ? ' <span class="gender-pill '+(gLabel === "Male" ? "gender-m" : "gender-f")+'" style="font-size:9.5px;padding:1px 6px;">'+gLabel.charAt(0)+'</span>' : '';
+      var deptText = e.dept ? escapeHtml(e.dept) : "Not in master list";
       var t = new Date(e.time);
       var tstr = t.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-      return '<li class="'+cls+'"><span class="sw"></span><span class="nm">'+escapeHtml(label)+gTag+'</span><span class="tm">'+tstr+'</span></li>';
+      return '<li class="'+cls+'"><span class="sw"></span>' +
+        '<span class="info"><span class="nm">'+escapeHtml(label)+gTag+'</span><span class="dp">'+deptText+'</span></span>' +
+        '<span class="tm">'+tstr+'</span></li>';
     }).join("");
   }
 
@@ -709,6 +714,16 @@ window.__MASTER__ = [[10041,"M.D.D Kumar","Plant F",1],[10248,"M.J Niluka","BP S
   document.getElementById("view-scan").addEventListener("click", function(){ scanInput.focus(); });
 
   // ---------- Export / Reset ----------
+  // Formats a stored ISO timestamp the same way it's shown on screen
+  // (local date + 12-hour clock time) instead of the raw UTC ISO string.
+  function formatDisplayTime(iso){
+    var d = new Date(iso);
+    if(isNaN(d.getTime())) return iso;
+    var datePart = d.toLocaleDateString([], {year:'numeric', month:'2-digit', day:'2-digit'});
+    var timePart = d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    return datePart + " " + timePart;
+  }
+
   // Shared CSV builder + downloader used by both export buttons.
   function downloadCsv(rows, filename){
     var csv = rows.map(function(r){
@@ -734,7 +749,7 @@ window.__MASTER__ = [[10041,"M.D.D Kumar","Plant F",1],[10248,"M.J Niluka","BP S
   document.getElementById("btnExport").addEventListener("click", function(){
     var rows = [["S.No","Scanned ID","Employee Name","Gender","Department","Scan Date/Time","Status"]];
     log.forEach(function(e, i){
-      rows.push([i+1, e.empNo, e.name, genderLabel(e.gender), e.dept, e.time, e.status]);
+      rows.push([i+1, e.empNo, e.name, genderLabel(e.gender), e.dept, formatDisplayTime(e.time), e.status]);
     });
     downloadCsv(rows, "ansell_employee_day_2026_log.csv");
   });
@@ -749,7 +764,7 @@ window.__MASTER__ = [[10041,"M.D.D Kumar","Plant F",1],[10248,"M.J Niluka","BP S
     var registered = log.filter(function(e){ return e.status === "REGISTERED"; });
     var rows = [["S.No","Employee No","Employee Name","Gender","Department","Registration Date/Time"]];
     registered.forEach(function(e, i){
-      rows.push([i+1, e.empNo, e.name, genderLabel(e.gender), e.dept, e.time]);
+      rows.push([i+1, e.empNo, e.name, genderLabel(e.gender), e.dept, formatDisplayTime(e.time)]);
     });
     downloadCsv(rows, "ansell_employee_day_2026_registered_employees.csv");
   });
