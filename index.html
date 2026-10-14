@@ -772,6 +772,11 @@ window.__MASTER__ = [[10041,"M.D.D Kumar","Plant F",1],[10248,"M.J Niluka","BP S
   });
 
   document.getElementById("btnReset").addEventListener("click", async function(){
+    var adminPassword = prompt("Enter admin password to reset the log:");
+    if(adminPassword !== "7890") {
+      if(adminPassword !== null) alert("Incorrect admin password.");
+      return;
+    }
     if(!confirm("This will permanently clear the entire scan log for ALL scan stations and the dashboard. Continue?")) return;
     if(!confirm("Are you absolutely sure? This cannot be undone.")) return;
     await resetAllData();
