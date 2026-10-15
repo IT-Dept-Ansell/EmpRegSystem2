@@ -368,12 +368,13 @@
         </div>
       </div>
       <div class="chart-panel">
-        <h3>Registered — Male vs Female</h3>
+        <h3>Registered — Male vs Female vs N/A</h3>
         <p class="cap">Gender split of valid registrations so far</p>
         <div class="canvas-wrap"><canvas id="chartGender"></canvas></div>
         <div class="legend-row">
           <span class="li"><span class="sw" style="background:#1E6FE0"></span>Male</span>
           <span class="li"><span class="sw" style="background:#D6519A"></span>Female</span>
+          <span class="li"><span class="sw" style="background:#9CA3AF"></span>Gender N/A</span>
         </div>
       </div>
       <div class="chart-panel">
@@ -576,18 +577,19 @@ window.__MASTER__ = [[136,"N.N Test","Knitting",0],[403,"K.N Fernando","Plant C"
   function fmt(n){ return n.toLocaleString(); }
 
   function computeStats(){
-    var registered=0, duplicate=0, notfound=0, maleReg=0, femaleReg=0;
+    var registered=0, duplicate=0, notfound=0, maleReg=0, femaleReg=0, genderNAReg=0;
     log.forEach(function(e){
       if(e.status === "REGISTERED"){
         registered++;
         if(e.gender === 1 || e.gender === "1") maleReg++;
         else if(e.gender === 0 || e.gender === "0") femaleReg++;
+        else genderNAReg++;
       }
       else if(e.status === "DUPLICATE") duplicate++;
       else notfound++;
     });
     var pending = TOTAL_ACTIVE - registered;
-    return {registered:registered, duplicate:duplicate, notfound:notfound, pending: pending < 0 ? 0 : pending, scanned: log.length, maleReg:maleReg, femaleReg:femaleReg};
+    return {registered:registered, duplicate:duplicate, notfound:notfound, pending: pending < 0 ? 0 : pending, scanned: log.length, maleReg:maleReg, femaleReg:femaleReg, genderNAReg:genderNAReg};
   }
 
   function renderMiniStats(){
@@ -943,16 +945,16 @@ window.__MASTER__ = [[136,"N.N Test","Knitting",0],[403,"K.N Fernando","Plant C"
   var genderChart = null;
   function ensureGenderChart(s){
     var ctx = document.getElementById("chartGender").getContext("2d");
-    var data = [s.maleReg, s.femaleReg];
-    var allZero = s.maleReg + s.femaleReg === 0;
-    var colors = allZero ? [COLOR_TRACK, COLOR_TRACK] : ["#1E6FE0", "#D6519A"];
+    var data = [s.maleReg, s.femaleReg, s.genderNAReg];
+    var allZero = s.maleReg + s.femaleReg + s.genderNAReg === 0;
+    var colors = allZero ? [COLOR_TRACK, COLOR_TRACK, COLOR_TRACK] : ["#1E6FE0", "#D6519A", "#9CA3AF"];
     if(!genderChart){
       genderChart = new Chart(ctx, {
         type: "doughnut",
         data: {
-          labels: ["Male","Female"],
+          labels: ["Male","Female","Gender N/A"],
           datasets: [{
-            data: allZero ? [1,0] : data,
+            data: allZero ? [1,0,0] : data,
             backgroundColor: colors,
             borderWidth: 0,
             hoverOffset: 6
@@ -965,7 +967,7 @@ window.__MASTER__ = [[136,"N.N Test","Knitting",0],[403,"K.N Fernando","Plant C"
         }
       });
     } else {
-      genderChart.data.datasets[0].data = allZero ? [1,0] : data;
+      genderChart.data.datasets[0].data = allZero ? [1,0,0] : data;
       genderChart.data.datasets[0].backgroundColor = colors;
       genderChart.options.plugins.tooltip.enabled = !allZero;
       genderChart.update();
