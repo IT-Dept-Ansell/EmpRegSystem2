@@ -118,6 +118,7 @@
   }
   .gender-pill.gender-m{background:var(--blue-bright);}
   .gender-pill.gender-f{background:#D6519A;}
+  .gender-pill.gender-na{background:#808080;}
 
   .status-banner.st-registered{background:linear-gradient(135deg,#EAF7DD,#DBF0C6);}
   .status-banner.st-registered .tag{background:var(--green-dark);}
@@ -610,7 +611,7 @@ window.__MASTER__ = [[136,"N.N Test","Knitting",0],[403,"K.N Fernando","Plant C"
       var cls = e.status === "REGISTERED" ? "r-reg" : (e.status === "DUPLICATE" ? "r-dup" : "r-notfound");
       var label = e.name ? e.name : ("ID " + e.empNo + " (unknown)");
       var gLabel = genderLabel(e.gender);
-      var gTag = gLabel ? ' <span class="gender-pill '+(gLabel === "Male" ? "gender-m" : "gender-f")+'" style="font-size:9.5px;padding:1px 6px;">'+gLabel.charAt(0)+'</span>' : '';
+      var gTag = gLabel ? ' <span class="gender-pill '+(gLabel === "Male" ? "gender-m" : (gLabel === "Female" ? "gender-f" : "gender-na"))+'" style="font-size:9.5px;padding:1px 6px;">'+gLabel.charAt(0)+'</span>' : '';
       var deptText = e.dept ? escapeHtml(e.dept) : "Not in master list";
       var t = new Date(e.time);
       var tstr = t.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
